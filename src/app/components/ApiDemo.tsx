@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { useSession } from 'next-auth/react';
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Textarea } from "@/components/ui/textarea"
@@ -22,14 +21,10 @@ export function ApiDemo() {
   }, null, 2))
   const [isLoading, setIsLoading] = useState(false)
   const router = useRouter();
-  const { data: session } = useSession();
 
   const handleSubmit = async () => {
-    if (session) {
-      router.push('/playground');
-    } else {
-      router.push('/api/auth/signin');
-    }
+    // Always go to playground so you can test without signing in
+    router.push('/playground');
   }
 
   return (

@@ -17,6 +17,10 @@ const Playground = () => {
     e.preventDefault();
     setIsLoading(true);
     setResponse(null);
+    setNotification(null);
+
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 90000); // 90s timeout
 
     try {
       const response = await fetch('/api/github-summarizer', {
@@ -26,19 +30,43 @@ const Playground = () => {
           'x-api-key': apiKey,
         },
         body: JSON.stringify({ githubUrl: githubUrl }),
+        signal: controller.signal,
       });
 
-      const data = await response.json();
+      clearTimeout(timeoutId);
+      const contentType = response.headers.get('content-type') || '';
+      const text = await response.text();
+      let data: { message?: string; error?: string } = {};
+      if (contentType.includes('application/json')) {
+        try {
+          data = JSON.parse(text);
+        } catch {
+          data = { message: 'Server returned invalid JSON.' };
+        }
+      } else {
+        data = {
+          message: text.startsWith('<')
+            ? 'Server returned an error page instead of JSON. Check the terminal where the dev server is running for the real error.'
+            : text.slice(0, 500),
+        };
+      }
 
       if (response.ok) {
         setResponse(data);
         setNotification({ message: 'Successfully fetched response', type: 'success' });
       } else {
         setResponse(data);
-        setNotification({ message: data.error || 'An error occurred', type: 'error' });
+        const errorMsg = data?.message || data?.error || 'An error occurred';
+        setNotification({ message: errorMsg, type: 'error' });
       }
     } catch (error) {
-      setNotification({ message: 'An error occurred', type: 'error' });
+      clearTimeout(timeoutId);
+      const isAbort = error instanceof Error && error.name === 'AbortError';
+      setNotification({
+        message: isAbort ? 'Request timed out (90s). Try a repo with a smaller README.' : 'An error occurred',
+        type: 'error',
+      });
+      if (!isAbort) setResponse({ message: String(error) });
     } finally {
       setIsLoading(false);
     }
@@ -55,15 +83,15 @@ const Playground = () => {
           <form onSubmit={handleSubmit} className="max-w-md space-y-4">
             <div>
               <label htmlFor="apiKey" className="block text-sm font-medium text-gray-700">
-                API Key
+                API Key <span className="text-gray-400 font-normal">(optional – uses OPENAI_API_KEY from .env.local if empty)</span>
               </label>
               <input
                 type="text"
                 id="apiKey"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
+                placeholder="Leave empty to use .env.local"
                 className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-indigo-300 focus:ring focus:ring-indigo-200 focus:ring-opacity-50"
-                required
               />
             </div>
             <div>

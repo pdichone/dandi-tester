@@ -20,9 +20,11 @@ export async function GET(request: Request, { params }: { params: { id: string }
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 
-  if (!data) {
+  // If the 'data' object is null or undefined, this means that no API key
+  // with the specified ID was found for the current user. 
+  // In that case, respond with a 404 Not Found error.
+  if (!data)
     return NextResponse.json({ error: 'API Key not found' }, { status: 404 });
-  }
 
   return NextResponse.json(data);
 }

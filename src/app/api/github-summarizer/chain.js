@@ -9,7 +9,15 @@ export async function summarizeReadme(readmeContent) {
     cool_facts: z.array(z.string()).describe("A list of 2 interesting facts about the repository"),
   });
 
-  const model = new ChatOpenAI({ temperature: 0 }).withStructuredOutput(responseSchema);
+  const openaiKey = (process.env.OPENAI_API_KEY || '').trim();
+  if (!openaiKey) {
+    throw new Error('OPENAI_API_KEY is not set in .env.local. Add it and restart the dev server.');
+  }
+  const model = new ChatOpenAI({
+    temperature: 0,
+    openAIApiKey: openaiKey,
+    timeout: 60000,
+  }).withStructuredOutput(responseSchema);
 
   const prompt = ChatPromptTemplate.fromTemplate(`
 Summarize this github repository from this readme file content:

@@ -17,21 +17,17 @@ export default function Dashboard() {
   const { data: session } = useSession();
 
   useEffect(() => {
-    if (session) {
-      fetchApiKeysData();
-    }
-  }, [session]);
+    fetchApiKeysData();
+  }, [session?.user?.email]);
 
   const fetchApiKeysData = async () => {
     try {
-      const response = await fetch('/api/api-keys', {
-        headers: {
-          'Authorization': `Bearer ${session.accessToken}`
-        }
-      });
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.accessToken) headers['Authorization'] = `Bearer ${session.accessToken}`;
+      const response = await fetch('/api/api-keys', { headers });
       if (!response.ok) throw new Error('Failed to fetch API keys');
       const data = await response.json();
-      setApiKeys(data);
+      setApiKeys(Array.isArray(data) ? data : []);
     } catch (error) {
       showNotification('Failed to fetch API keys', 'error');
     }
@@ -43,32 +39,43 @@ export default function Dashboard() {
 
   const handleCreateApiKey = async (name, limit) => {
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.accessToken) headers['Authorization'] = `Bearer ${session.accessToken}`;
       const response = await fetch('/api/api-keys', {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.accessToken}`
-        },
+        headers,
         body: JSON.stringify({ name, limit })
       });
-      if (!response.ok) throw new Error('Failed to create API key');
-      const newKey = await response.json();
-      setApiKeys([...apiKeys, newKey]);
+      const text = await response.text();
+      let data = {};
+      try {
+        data = text ? JSON.parse(text) : {};
+      } catch {
+        data = { error: text || `Server error (${response.status})` };
+      }
+      if (!response.ok) {
+        showNotification(data?.error || `Failed to create API key (${response.status})`, 'error');
+        return;
+      }
+      setApiKeys([...apiKeys, data]);
       setIsCreateModalOpen(false);
       showNotification('API key created successfully');
     } catch (error) {
-      showNotification('Failed to create API key', 'error');
+      const msg = error?.message || 'Failed to create API key';
+      const hint = msg.toLowerCase().includes('fetch failed')
+        ? ' Check that the dev server is running and NEXT_PUBLIC_SUPABASE_URL in .env.local is correct (e.g. https://xxx.supabase.co).'
+        : '';
+      showNotification(msg + hint, 'error');
     }
   };
 
   const handleUpdateApiKey = async (updatedKey) => {
     try {
+      const headers = { 'Content-Type': 'application/json' };
+      if (session?.accessToken) headers['Authorization'] = `Bearer ${session.accessToken}`;
       const response = await fetch(`/api/api-keys/${updatedKey.id}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${session.accessToken}`
-        },
+        headers,
         body: JSON.stringify({ name: updatedKey.name })
       });
       if (!response.ok) throw new Error('Failed to update API key');
@@ -86,11 +93,11 @@ export default function Dashboard() {
 
   const handleDeleteApiKey = async (id) => {
     try {
+      const headers = {};
+      if (session?.accessToken) headers['Authorization'] = `Bearer ${session.accessToken}`;
       const response = await fetch(`/api/api-keys/${id}`, {
         method: 'DELETE',
-        headers: {
-          'Authorization': `Bearer ${session.accessToken}`
-        }
+        headers
       });
       if (!response.ok) throw new Error('Failed to delete API key');
       const updatedKeys = apiKeys.filter(key => key.id !== id);
