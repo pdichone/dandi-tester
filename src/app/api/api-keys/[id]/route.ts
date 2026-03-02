@@ -35,7 +35,17 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
   }
 
-  const { name } = await request.json();
+  let body: { name?: string };
+  try {
+    body = await request.json();
+  } catch {
+    return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 });
+  }
+
+  const name = typeof body?.name === 'string' ? body.name.trim() : '';
+  if (!name) {
+    return NextResponse.json({ error: 'Name is required' }, { status: 400 });
+  }
 
   const { data, error } = await supabase
     .from('api_keys')

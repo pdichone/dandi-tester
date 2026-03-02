@@ -58,9 +58,10 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
     }
 
-    if (typeof count === 'number' && count >= 50) {
+    const dailyKeyLimit = 3;
+    if (typeof count === 'number' && count >= dailyKeyLimit) {
       return NextResponse.json(
-        { error: 'Daily API key limit reached (50 per day).', code: 'API_KEY_DAILY_LIMIT' },
+        { error: `Daily API key limit reached (${dailyKeyLimit} per day).`, code: 'API_KEY_DAILY_LIMIT' },
         { status: 429 },
       );
     }

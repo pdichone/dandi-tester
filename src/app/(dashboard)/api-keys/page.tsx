@@ -87,7 +87,7 @@ export default function ApiKeysDashboardPage() {
 
         if (response.status === 429 || errorData.code === 'API_KEY_DAILY_LIMIT') {
           showNotification(
-            errorData.error || "You've reached the daily limit of 50 API keys. Try again tomorrow.",
+            errorData.error || "You've reached the daily limit of 3 API keys. Try again tomorrow.",
             'error',
           );
           return;
