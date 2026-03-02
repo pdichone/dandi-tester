@@ -1,39 +1,39 @@
 import { NextResponse } from 'next/server';
-import { getSessionUser } from '@/app/lib/auth';
+import { requireAuth } from '@/app/lib/auth';
 import { supabase } from '@/app/lib/supabaseClient';
 
 export async function GET(request: Request, { params }: { params: { id: string } }) {
-  const user = await getSessionUser();
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  try {
+    const user = await requireAuth();
+
+    const { data, error } = await supabase
+      .from('api_keys')
+      .select('*')
+      .eq('id', params.id)
+      .eq('user_id', user.id)
+      .single();
+
+    if (error) {
+      console.error('Error fetching API key:', error);
+      return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    }
+
+    // If the 'data' object is null or undefined, this means that no API key
+    // with the specified ID was found for the current user. 
+    // In that case, respond with a 404 Not Found error.
+    if (!data)
+      return NextResponse.json({ error: 'API Key not found' }, { status: 404 });
+
+    return NextResponse.json(data);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unauthorized';
+    return NextResponse.json({ error: message }, { status: 401 });
   }
-
-  const { data, error } = await supabase
-    .from('api_keys')
-    .select('*')
-    .eq('id', params.id)
-    .eq('user_id', user.id)
-    .single();
-
-  if (error) {
-    console.error('Error fetching API key:', error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
-  }
-
-  // If the 'data' object is null or undefined, this means that no API key
-  // with the specified ID was found for the current user. 
-  // In that case, respond with a 404 Not Found error.
-  if (!data)
-    return NextResponse.json({ error: 'API Key not found' }, { status: 404 });
-
-  return NextResponse.json(data);
 }
 
 export async function PUT(request: Request, { params }: { params: { id: string } }) {
-  const user = await getSessionUser();
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  try {
+    const user = await requireAuth();
 
   let body: { name?: string };
   try {
@@ -59,18 +59,20 @@ export async function PUT(request: Request, { params }: { params: { id: string }
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 
-  if (data.length === 0) {
-    return NextResponse.json({ error: 'API Key not found' }, { status: 404 });
-  }
+    if (data.length === 0) {
+      return NextResponse.json({ error: 'API Key not found' }, { status: 404 });
+    }
 
-  return NextResponse.json(data[0]);
+    return NextResponse.json(data[0]);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unauthorized';
+    return NextResponse.json({ error: message }, { status: 401 });
+  }
 }
 
 export async function DELETE(request: Request, { params }: { params: { id: string } }) {
-  const user = await getSessionUser();
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  try {
+    const user = await requireAuth();
 
   const { error } = await supabase
     .from('api_keys')
@@ -78,10 +80,14 @@ export async function DELETE(request: Request, { params }: { params: { id: strin
     .eq('id', params.id)
     .eq('user_id', user.id);
 
-  if (error) {
-    console.error('Error deleting API key:', error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
-  }
+    if (error) {
+      console.error('Error deleting API key:', error);
+      return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    }
 
-  return NextResponse.json({ message: 'API Key deleted successfully' });
+    return NextResponse.json({ message: 'API Key deleted successfully' });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unauthorized';
+    return NextResponse.json({ error: message }, { status: 401 });
+  }
 }

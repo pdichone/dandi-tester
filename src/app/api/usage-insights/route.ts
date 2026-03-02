@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { getSessionUser } from '@/app/lib/auth';
+import { requireAuth } from '@/app/lib/auth';
 import { supabase } from '@/app/lib/supabaseClient';
 
 interface UsageInsightsKeySummary {
@@ -20,11 +20,8 @@ interface UsageInsightsResponse {
 }
 
 export async function GET() {
-  const user = await getSessionUser();
-
-  if (!user) {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-  }
+  try {
+    const user = await requireAuth();
 
   const { data, error } = await supabase
     .from('api_keys')
@@ -76,6 +73,10 @@ export async function GET() {
     topKeysByUsage,
   };
 
-  return NextResponse.json(response);
+    return NextResponse.json(response);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unauthorized';
+    return NextResponse.json({ error: message }, { status: 401 });
+  }
 }
 
