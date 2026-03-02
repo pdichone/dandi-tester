@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from 'react-dom/server';
 
 vi.mock('@/app/lib/auth', () => ({
   getSessionUser: vi.fn(),
+  requireAuth: vi.fn(),
 }));
 
 vi.mock('@/app/components/Sidebar', () => ({
@@ -21,10 +22,10 @@ vi.mock('@/app/lib/supabaseClient', () => {
 import { GET } from '@/app/api/usage-insights/route';
 import { UsageInsightsCard } from '@/app/components/usage-insights-card';
 import UsageInsightsPage from '@/app/(dashboard)/usage-insights/page';
-import { getSessionUser } from '@/app/lib/auth';
+import { requireAuth } from '@/app/lib/auth';
 import { supabase } from '@/app/lib/supabaseClient';
 
-const getSessionUserMock = getSessionUser as unknown as ReturnType<typeof vi.fn>;
+const requireAuthMock = requireAuth as unknown as ReturnType<typeof vi.fn>;
 const supabaseFromMock = supabase.from as unknown as ReturnType<typeof vi.fn>;
 
 interface MockResponse {
@@ -46,7 +47,7 @@ describe('usage-insights API route', () => {
   });
 
   it('returns aggregated metrics for an authenticated user', async () => {
-    getSessionUserMock.mockResolvedValue({ id: 'user-1' });
+    requireAuthMock.mockResolvedValue({ id: 'user-1' });
 
     const sampleKeys = [
       { id: '1', name: 'Key A', usage: 10, limit: 100 },
@@ -78,7 +79,7 @@ describe('usage-insights API route', () => {
   });
 
   it('returns zeros when user has no keys', async () => {
-    getSessionUserMock.mockResolvedValue({ id: 'user-1' });
+    requireAuthMock.mockResolvedValue({ id: 'user-1' });
 
     const eqMock = vi.fn().mockResolvedValue(createSupabaseSuccessResponse([]));
     const selectMock = vi.fn().mockReturnValue({ eq: eqMock });
@@ -95,17 +96,17 @@ describe('usage-insights API route', () => {
   });
 
   it('returns 401 when unauthenticated', async () => {
-    getSessionUserMock.mockResolvedValue(null);
+    requireAuthMock.mockRejectedValue(new Error('Unauthorized: Authentication required'));
 
     const response = await GET();
     const body = (await response.json()) as { error: string };
 
     expect(response.status).toBe(401);
-    expect(body.error).toBe('Unauthorized');
+    expect(body.error).toBe('Unauthorized: Authentication required');
   });
 
   it('returns 500 when Supabase returns an error', async () => {
-    getSessionUserMock.mockResolvedValue({ id: 'user-1' });
+    requireAuthMock.mockResolvedValue({ id: 'user-1' });
 
     const eqMock = vi.fn().mockResolvedValue(createSupabaseErrorResponse('Something went wrong'));
     const selectMock = vi.fn().mockReturnValue({ eq: eqMock });
