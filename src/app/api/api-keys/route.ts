@@ -2,14 +2,23 @@ import { NextResponse } from 'next/server';
 import { requireAuth } from '@/app/lib/auth';
 import { supabase } from '@/app/lib/supabaseClient';
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
     const user = await requireAuth();
 
-    const { data, error } = await supabase
+    // Parse pagination parameters from URL
+    const { searchParams } = new URL(request.url);
+    const page = Math.max(1, parseInt(searchParams.get('page') || '1', 10));
+    const limit = Math.min(100, Math.max(1, parseInt(searchParams.get('limit') || '50', 10)));
+    const offset = (page - 1) * limit;
+
+    // Fetch paginated results with total count
+    const { data, error, count } = await supabase
       .from('api_keys')
-      .select('*')
-      .eq('user_id', user.id);
+      .select('*', { count: 'exact' })
+      .eq('user_id', user.id)
+      .order('created_at', { ascending: false })
+      .range(offset, offset + limit - 1);
 
     if (error) {
       console.error('Error fetching API keys:', error);
@@ -21,7 +30,18 @@ export async function GET() {
       remaining: Math.max(0, (key.limit ?? 0) - (key.usage ?? 0)),
     }));
 
-    return NextResponse.json(keysWithRemaining);
+    const totalPages = count ? Math.ceil(count / limit) : 0;
+
+    return NextResponse.json({
+      data: keysWithRemaining,
+      pagination: {
+        page,
+        limit,
+        total: count ?? 0,
+        totalPages,
+        hasMore: page < totalPages,
+      },
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unauthorized';
     return NextResponse.json({ error: message }, { status: 401 });
@@ -47,6 +67,8 @@ export async function POST(request: Request) {
       const todayStart = new Date();
       todayStart.setUTCHours(0, 0, 0, 0);
 
+      // Optimized query: uses composite index on (user_id, created_at)
+      // head: true means we only get the count, not the data
       const { count, error: countError } = await supabase
         .from('api_keys')
         .select('id', { count: 'exact', head: true })

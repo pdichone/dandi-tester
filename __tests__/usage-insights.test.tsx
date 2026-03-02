@@ -50,13 +50,34 @@ describe('usage-insights API route', () => {
     requireAuthMock.mockResolvedValue({ id: 'user-1' });
 
     const sampleKeys = [
-      { id: '1', name: 'Key A', usage: 10, limit: 100 },
-      { id: '2', name: 'Key B', usage: 20, limit: 200 },
+      { id: '1', name: 'Key A', usage: 10, limit: 100, user_id: 'user-1' },
+      { id: '2', name: 'Key B', usage: 20, limit: 200, user_id: 'user-1' },
     ];
 
-    const eqMock = vi.fn().mockResolvedValue(createSupabaseSuccessResponse(sampleKeys));
-    const selectMock = vi.fn().mockReturnValue({ eq: eqMock });
-    supabaseFromMock.mockReturnValue({ select: selectMock });
+    const topKeys = [
+      { id: '2', name: 'Key B', usage: 20, limit: 200 },
+      { id: '1', name: 'Key A', usage: 10, limit: 100 },
+    ];
+
+    // Mock first query (all keys for totals)
+    const allKeysEqMock = vi.fn().mockResolvedValue(createSupabaseSuccessResponse(sampleKeys));
+    const allKeysSelectMock = vi.fn().mockReturnValue({ eq: allKeysEqMock });
+
+    // Mock second query (top keys sorted by usage)
+    const topKeysLimitMock = vi.fn().mockResolvedValue(createSupabaseSuccessResponse(topKeys));
+    const topKeysOrderMock = vi.fn().mockReturnValue({ limit: topKeysLimitMock });
+    const topKeysEqMock = vi.fn().mockReturnValue({ order: topKeysOrderMock });
+    const topKeysSelectMock = vi.fn().mockReturnValue({ eq: topKeysEqMock });
+
+    // Return different mocks based on call order
+    let callCount = 0;
+    supabaseFromMock.mockImplementation(() => {
+      callCount++;
+      if (callCount === 1) {
+        return { select: allKeysSelectMock };
+      }
+      return { select: topKeysSelectMock };
+    });
 
     const response = await GET();
     const body = (await response.json()) as {
@@ -76,14 +97,29 @@ describe('usage-insights API route', () => {
     expect(body.keysCount).toBe(2);
     expect(body.topKeysByUsage).toHaveLength(2);
     expect(body.topKeysByUsage[0].name).toBe('Key B');
+    expect(body.topKeysByUsage[0].usage).toBe(20);
   });
 
   it('returns zeros when user has no keys', async () => {
     requireAuthMock.mockResolvedValue({ id: 'user-1' });
 
-    const eqMock = vi.fn().mockResolvedValue(createSupabaseSuccessResponse([]));
-    const selectMock = vi.fn().mockReturnValue({ eq: eqMock });
-    supabaseFromMock.mockReturnValue({ select: selectMock });
+    // Mock both queries returning empty arrays
+    const emptyEqMock = vi.fn().mockResolvedValue(createSupabaseSuccessResponse([]));
+    const emptySelectMock = vi.fn().mockReturnValue({ eq: emptyEqMock });
+
+    const topKeysLimitMock = vi.fn().mockResolvedValue(createSupabaseSuccessResponse([]));
+    const topKeysOrderMock = vi.fn().mockReturnValue({ limit: topKeysLimitMock });
+    const topKeysEqMock = vi.fn().mockReturnValue({ order: topKeysOrderMock });
+    const topKeysSelectMock = vi.fn().mockReturnValue({ eq: topKeysEqMock });
+
+    let callCount = 0;
+    supabaseFromMock.mockImplementation(() => {
+      callCount++;
+      if (callCount === 1) {
+        return { select: emptySelectMock };
+      }
+      return { select: topKeysSelectMock };
+    });
 
     const response = await GET();
     const body = (await response.json()) as { totalUsage: number; totalLimit: number; totalRemaining: number; keysCount: number };
@@ -108,15 +144,54 @@ describe('usage-insights API route', () => {
   it('returns 500 when Supabase returns an error', async () => {
     requireAuthMock.mockResolvedValue({ id: 'user-1' });
 
-    const eqMock = vi.fn().mockResolvedValue(createSupabaseErrorResponse('Something went wrong'));
-    const selectMock = vi.fn().mockReturnValue({ eq: eqMock });
-    supabaseFromMock.mockReturnValue({ select: selectMock });
+    // Mock first query returning error
+    const errorEqMock = vi.fn().mockResolvedValue(createSupabaseErrorResponse('Something went wrong'));
+    const errorSelectMock = vi.fn().mockReturnValue({ eq: errorEqMock });
+    supabaseFromMock.mockReturnValue({ select: errorSelectMock });
 
     const response = await GET();
     const body = (await response.json()) as { error: string };
 
     expect(response.status).toBe(500);
     expect(body.error).toBe('Internal Server Error');
+  });
+
+  it('falls back to client-side sorting if top keys query fails', async () => {
+    requireAuthMock.mockResolvedValue({ id: 'user-1' });
+
+    const sampleKeys = [
+      { id: '1', name: 'Key A', usage: 10, limit: 100, user_id: 'user-1' },
+      { id: '2', name: 'Key B', usage: 20, limit: 200, user_id: 'user-1' },
+    ];
+
+    // Mock first query (all keys) succeeds
+    const allKeysEqMock = vi.fn().mockResolvedValue(createSupabaseSuccessResponse(sampleKeys));
+    const allKeysSelectMock = vi.fn().mockReturnValue({ eq: allKeysEqMock });
+
+    // Mock second query (top keys) fails
+    const topKeysLimitMock = vi.fn().mockResolvedValue(createSupabaseErrorResponse('Query failed'));
+    const topKeysOrderMock = vi.fn().mockReturnValue({ limit: topKeysLimitMock });
+    const topKeysEqMock = vi.fn().mockReturnValue({ order: topKeysOrderMock });
+    const topKeysSelectMock = vi.fn().mockReturnValue({ eq: topKeysEqMock });
+
+    let callCount = 0;
+    supabaseFromMock.mockImplementation(() => {
+      callCount++;
+      if (callCount === 1) {
+        return { select: allKeysSelectMock };
+      }
+      return { select: topKeysSelectMock };
+    });
+
+    const response = await GET();
+    const body = (await response.json()) as {
+      topKeysByUsage: { id: string; name: string; usage: number }[];
+    };
+
+    expect(response.status).toBe(200);
+    // Should fallback to client-side sorting
+    expect(body.topKeysByUsage).toHaveLength(2);
+    expect(body.topKeysByUsage[0].name).toBe('Key B'); // Higher usage first
   });
 });
 

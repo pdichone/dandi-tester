@@ -46,8 +46,15 @@ export default function ApiKeysDashboardPage() {
     try {
       const response = await fetch('/api/api-keys');
       if (!response.ok) throw new Error('Failed to fetch API keys');
-      const data = await response.json();
-      setApiKeys(Array.isArray(data) ? data : []);
+      const result = await response.json();
+      // Handle both old format (array) and new format (paginated object)
+      if (Array.isArray(result)) {
+        setApiKeys(result);
+      } else if (result.data && Array.isArray(result.data)) {
+        setApiKeys(result.data);
+      } else {
+        setApiKeys([]);
+      }
     } catch (error) {
       showNotification('Failed to fetch API keys', 'error');
     }
