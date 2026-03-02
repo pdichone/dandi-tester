@@ -19,20 +19,26 @@ export const authOptions: NextAuthOptions = {
       return session;
     },
     async jwt({ token, user, trigger }) {
-      // Fetch role from database when user signs in or session is accessed
+      // Only fetch role from database if:
+      // 1. User is signing in (user object exists)
+      // 2. Role is not already in token
+      // 3. Token is being refreshed (trigger === 'update')
       if (user?.email || token.email) {
         const email = user?.email || token.email;
         if (email) {
-          const { data } = await supabase
-            .from('users')
-            .select('role')
-            .eq('email', email)
-            .single();
-          
-          if (data?.role) {
-            token.role = data.role as UserRole;
-          } else {
-            token.role = 'user'; // Default role
+          // Only query database if role is missing or user is signing in
+          if (user || !token.role || trigger === 'update') {
+            const { data } = await supabase
+              .from('users')
+              .select('role')
+              .eq('email', email)
+              .single();
+            
+            if (data?.role) {
+              token.role = data.role as UserRole;
+            } else {
+              token.role = 'user'; // Default role
+            }
           }
         }
       }

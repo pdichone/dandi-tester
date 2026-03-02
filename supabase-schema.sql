@@ -25,6 +25,13 @@ create table if not exists public.api_keys (
 -- Indexes for lookups
 create index if not exists api_keys_user_id_idx on public.api_keys(user_id);
 create index if not exists api_keys_value_idx on public.api_keys(value);
+-- Composite index for daily limit check (user_id + created_at)
+-- This optimizes queries that filter by user_id and created_at date range
+create index if not exists api_keys_user_id_created_at_idx on public.api_keys(user_id, created_at);
+-- Index for sorting by usage (used in usage-insights endpoint)
+create index if not exists api_keys_usage_idx on public.api_keys(usage desc);
+-- Index for users email lookups (used in auth)
+create index if not exists users_email_idx on public.users(email);
 
 -- Allow anonymous read/insert/update/delete for service role and anon (your app uses anon key with RLS or you may need to add policies)
 -- If you use Row Level Security (RLS), add policies so your app can access these tables. Example:

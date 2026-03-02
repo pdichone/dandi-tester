@@ -23,55 +23,81 @@ export async function GET() {
   try {
     const user = await requireAuth();
 
-  const { data, error } = await supabase
-    .from('api_keys')
-    .select('id, name, usage, limit, user_id')
-    .eq('user_id', user.id);
+    // Fetch all keys for the user (for totals calculation)
+    // For large datasets, we could optimize this further with aggregation queries
+    const { data, error } = await supabase
+      .from('api_keys')
+      .select('id, name, usage, limit, user_id')
+      .eq('user_id', user.id);
 
-  if (error) {
-    console.error('Error fetching usage insights:', error);
-    return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
-  }
+    if (error) {
+      console.error('Error fetching usage insights:', error);
+      return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    }
 
-  const keys = (data ?? []).map((key) => {
-    const usage = typeof key.usage === 'number' ? key.usage : 0;
-    const limit = typeof key.limit === 'number' ? key.limit : 0;
-    const remaining = Math.max(0, limit - usage);
+    const keys = (data ?? []).map((key) => {
+      const usage = typeof key.usage === 'number' ? key.usage : 0;
+      const limit = typeof key.limit === 'number' ? key.limit : 0;
+      const remaining = Math.max(0, limit - usage);
 
-    return {
-      id: String(key.id),
-      name: String(key.name ?? 'Untitled key'),
-      usage,
-      limit,
-      remaining,
+      return {
+        id: String(key.id),
+        name: String(key.name ?? 'Untitled key'),
+        usage,
+        limit,
+        remaining,
+      };
+    });
+
+    const totals = keys.reduce(
+      (acc, key) => {
+        acc.totalUsage += key.usage;
+        acc.totalLimit += key.limit;
+        acc.totalRemaining += key.remaining;
+        return acc;
+      },
+      { totalUsage: 0, totalLimit: 0, totalRemaining: 0 },
+    );
+
+    const utilizationPercent =
+      totals.totalLimit > 0 ? Math.min(100, Math.max(0, (totals.totalUsage / totals.totalLimit) * 100)) : 0;
+
+    // Fetch top 3 keys by usage directly from database (optimized)
+    const { data: topKeysData, error: topKeysError } = await supabase
+      .from('api_keys')
+      .select('id, name, usage, limit')
+      .eq('user_id', user.id)
+      .order('usage', { ascending: false })
+      .limit(3);
+
+    let topKeysByUsage: UsageInsightsKeySummary[] = [];
+    if (!topKeysError && topKeysData) {
+      topKeysByUsage = topKeysData.map((key) => {
+        const usage = typeof key.usage === 'number' ? key.usage : 0;
+        const limit = typeof key.limit === 'number' ? key.limit : 0;
+        return {
+          id: String(key.id),
+          name: String(key.name ?? 'Untitled key'),
+          usage,
+          limit,
+          remaining: Math.max(0, limit - usage),
+        };
+      });
+    } else if (topKeysError) {
+      // Fallback to client-side sorting if database query fails
+      topKeysByUsage = [...keys]
+        .sort((a, b) => b.usage - a.usage)
+        .slice(0, 3);
+    }
+
+    const response: UsageInsightsResponse = {
+      totalUsage: totals.totalUsage,
+      totalLimit: totals.totalLimit,
+      totalRemaining: totals.totalRemaining,
+      utilizationPercent,
+      keysCount: keys.length,
+      topKeysByUsage,
     };
-  });
-
-  const totals = keys.reduce(
-    (acc, key) => {
-      acc.totalUsage += key.usage;
-      acc.totalLimit += key.limit;
-      acc.totalRemaining += key.remaining;
-      return acc;
-    },
-    { totalUsage: 0, totalLimit: 0, totalRemaining: 0 },
-  );
-
-  const utilizationPercent =
-    totals.totalLimit > 0 ? Math.min(100, Math.max(0, (totals.totalUsage / totals.totalLimit) * 100)) : 0;
-
-  const topKeysByUsage = [...keys]
-    .sort((a, b) => b.usage - a.usage)
-    .slice(0, 3);
-
-  const response: UsageInsightsResponse = {
-    totalUsage: totals.totalUsage,
-    totalLimit: totals.totalLimit,
-    totalRemaining: totals.totalRemaining,
-    utilizationPercent,
-    keysCount: keys.length,
-    topKeysByUsage,
-  };
 
     return NextResponse.json(response);
   } catch (error) {
