@@ -75,7 +75,7 @@ export default function ApiKeysDashboardPage() {
       });
 
       const text = await response.text();
-      let data: ApiKey | { error?: string } = {} as ApiKey;
+      let data: ApiKey | { error?: string; code?: string } = {} as ApiKey;
       try {
         data = text ? JSON.parse(text) : ({} as ApiKey);
       } catch {
@@ -83,7 +83,17 @@ export default function ApiKeysDashboardPage() {
       }
 
       if (!response.ok) {
-        showNotification((data as { error?: string })?.error || `Failed to create API key (${response.status})`, 'error');
+        const errorData = data as { error?: string; code?: string };
+
+        if (response.status === 429 || errorData.code === 'API_KEY_DAILY_LIMIT') {
+          showNotification(
+            errorData.error || "You've reached the daily limit of 50 API keys. Try again tomorrow.",
+            'error',
+          );
+          return;
+        }
+
+        showNotification(errorData.error || `Failed to create API key (${response.status})`, 'error');
         return;
       }
 

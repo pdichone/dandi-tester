@@ -44,6 +44,27 @@ export async function POST(request: Request) {
   const newKeyValue = `dandi-${Date.now()}${Math.random().toString(36).substring(2, 15)}`;
 
   try {
+    const todayStart = new Date();
+    todayStart.setUTCHours(0, 0, 0, 0);
+
+    const { count, error: countError } = await supabase
+      .from('api_keys')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .gte('created_at', todayStart.toISOString());
+
+    if (countError) {
+      console.error('Error counting API keys for daily limit:', countError);
+      return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
+    }
+
+    if (typeof count === 'number' && count >= 50) {
+      return NextResponse.json(
+        { error: 'Daily API key limit reached (50 per day).', code: 'API_KEY_DAILY_LIMIT' },
+        { status: 429 },
+      );
+    }
+
     const { data, error } = await supabase
       .from('api_keys')
       .insert([
